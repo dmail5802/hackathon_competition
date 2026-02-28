@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Heart Disease Risk Applet (Hackathon Demo)</title>
+  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- TensorFlow.js + PapaParse for in-browser "AI mode" training -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="brand">
+        <div class="logo">❤️</div>
+        <div>
+          <h1>Heart Disease Risk Applet</h1>
+          <p class="subtitle">
+            Predicts risk using a backup Logistic model + optional in-browser AI model (TensorFlow.js).
+          </p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container grid">
+    <!-- LEFT: Inputs -->
+    <section class="card">
+      <h2>Patient inputs</h2>
+
+      <!-- Model Mode -->
+      <div class="field">
+        <label for="mode">Prediction mode</label>
+        <select id="mode" class="select">
+          <option value="logistic">Backup ML (Logistic Equation)</option>
+          <option value="ai">AI Mode (Neural Net in browser)</option>
+        </select>
+        <p class="hint">
+          AI mode works after you click “Train AI from train.csv” below. Backup model always works.
+        </p>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Thallium -->
+      <div class="field">
+        <label for="thallium">Thallium (0–7)</label>
+        <div class="row">
+          <input id="thallium" type="range" min="0" max="7" step="1" value="0" />
+          <div class="pill"><span id="thalliumVal">0</span></div>
+        </div>
+        <p class="hint">Added 0 as “unknown/none”. Dataset often uses 3/6/7.</p>
+      </div>
+
+      <!-- Chest Pain -->
+      <div class="field">
+        <label for="chestPain">Chest pain type (0–4)</label>
+        <div class="row">
+          <input id="chestPain" type="range" min="0" max="4" step="1" value="0" />
+          <div class="pill"><span id="chestPainVal">0</span></div>
+        </div>
+        <p class="hint">Added 0 as “unknown/none”. Dataset encoding uses 1–4.</p>
+      </div>
+
+      <!-- Exercise Angina -->
+      <div class="field">
+        <label>Exercise angina</label>
+        <div class="toggleRow">
+          <button class="toggle active" id="anginaNo" type="button" aria-pressed="true">No (0)</button>
+          <button class="toggle" id="anginaYes" type="button" aria-pressed="false">Yes (1)</button>
+        </div>
+      </div>
+
+      <!-- Added inputs -->
+      <div class="field">
+        <label for="cholesterol">Cholesterol (0–600)</label>
+        <div class="row">
+          <input id="cholesterol" type="range" min="0" max="600" step="1" value="0" />
+          <div class="pill"><span id="cholesterolVal">0</span></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="bp">Blood Pressure BP (0–250)</label>
+        <div class="row">
+          <input id="bp" type="range" min="0" max="250" step="1" value="0" />
+          <div class="pill"><span id="bpVal">0</span></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Sex</label>
+        <div class="toggleRow">
+          <button class="toggle active" id="sex0" type="button" aria-pressed="true">0 (Female)</button>
+          <button class="toggle" id="sex1" type="button" aria-pressed="false">1 (Male)</button>
+        </div>
+        <p class="hint">Uses dataset coding (often 0=female, 1=male).</p>
+      </div>
+
+      <!-- Threshold -->
+      <div class="field">
+        <label for="threshold">Decision threshold</label>
+        <div class="row">
+          <input id="threshold" type="range" min="0.10" max="0.90" step="0.01" value="0.50" />
+          <div class="pill"><span id="thresholdVal">0.50</span></div>
+        </div>
+        <p class="hint">Lower threshold reduces false negatives (screening); higher reduces false positives.</p>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- AI training controls -->
+      <section class="cardSub">
+        <h3>AI Mode controls</h3>
+        <p class="note">
+          Trains a small neural net in your browser using <code>../data/heart_disease/train.csv</code>.
+          This is a demo — not medical advice.
+        </p>
+
+        <div class="row">
+          <button id="trainAiBtn" class="btn" type="button">Train AI from train.csv</button>
+          <button id="resetAiBtn" class="btn secondary" type="button">Reset AI model</button>
+        </div>
+
+        <div class="status" id="trainStatus">AI status: not trained</div>
+
+        <details>
+          <summary>Need to change the backup equation?</summary>
+          <p class="hint">
+            The backup equation lives in <code>applet/app.js</code> under <code>LOGISTIC_COEFFS</code>.
+            If you fit a new logistic model (with Cholesterol/BP/Sex), paste the coefficients there.
+          </p>
+        </details>
+      </section>
+
+      <!-- Backup model equation -->
+      <details>
+        <summary>Backup Logistic Equation (click)</summary>
+        <div class="equation">
+          <code id="equationText"></code>
+          <p class="hint">
+            p = 1 / (1 + e<sup>−logit(p)</sup>)
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <!-- RIGHT: Output -->
+    <section class="card">
+      <h2>Prediction</h2>
+
+      <div class="scoreWrap">
+        <div class="gauge" aria-label="Risk gauge">
+          <div class="gaugeFill" id="gaugeFill"></div>
+        </div>
+        <div class="scoreText">
+          <div class="big"><span id="probPct">—</span></div>
+          <div class="meta">
+            Predicted probability of <b>Heart Disease (Presence)</b>
+          </div>
+          <div class="mini" id="modeBadge">Mode: Backup Logistic</div>
+        </div>
+      </div>
+
+      <div class="resultRow">
+        <div class="resultBadge" id="resultBadge">—</div>
+        <div class="riskBand" id="riskBand">—</div>
+      </div>
+
+      <div class="explain cardSub">
+        <h3>Insights</h3>
+        <ul>
+          <li>Backup model is an interpretable ML equation; AI mode can capture more nonlinear patterns.</li>
+          <li>Setting inputs to 0 means “unknown/none” in this demo (prevents forced high risk).</li>
+          <li>This is a hackathon demo — not a clinical diagnostic tool.</li>
+        </ul>
+      </div>
+
+      <div class="safety cardSub">
+        <h3>Safety / hotline</h3>
+        <p class="note">
+          If you have symptoms like chest pain, shortness of breath, weakness, or fainting: seek help immediately.
+        </p>
+        <div class="hotline">
+          <div class="hotlineItem">
+            <div class="hotTitle">Emergency (US)</div>
+            <div class="hotNum"><a href="tel:911">911</a></div>
+          </div>
+          <div class="hotlineItem">
+            <div class="hotTitle">Non-emergency (replace if needed)</div>
+            <div class="hotNum"><a href="tel:18001234567">1-800-123-4567</a></div>
+            <div class="hint">Replace with sponsor/clinic number if provided by hackathon.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footerNote">
+        <span>GitHub Pages • Static app • Backup ML + Optional Browser AI</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
